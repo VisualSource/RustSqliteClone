@@ -1,4 +1,6 @@
+mod btree;
 mod commands;
+mod engine;
 mod errors;
 mod sql;
 mod structure;
