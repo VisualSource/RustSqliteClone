@@ -1,11 +1,11 @@
-mod btree;
-mod error;
+pub mod btree;
+pub mod error;
 mod node;
-mod node_type;
+pub mod node_type;
 mod page;
 mod page_layout;
 mod pager;
-mod structure;
+pub mod structure;
 mod wal;
 
 #[cfg(test)]

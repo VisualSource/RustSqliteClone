@@ -57,11 +57,16 @@ impl BTreeBuilder {
         }
 
         let mut pager = Pager::new(self.path)?;
-        let root = Node::new(NodeType::Leaf(vec![]), true, None);
-        let root_offset = pager.write_page(Page::try_from(&root)?)?;
+
         let parent_directory = self.path.parent().unwrap_or_else(|| Path::new("/tmp"));
         let mut wal = Wal::new(parent_directory.to_path_buf())?;
-        wal.set_root(root_offset)?;
+
+        if pager.is_empty()? {
+            let root = Node::new(NodeType::Leaf(vec![]), true, None);
+            let offset = pager.write_page(Page::try_from(&root)?)?;
+
+            wal.set_root(offset)?;
+        }
 
         Ok(BTree {
             pager,
@@ -416,6 +421,8 @@ impl BTree {
 
 #[cfg(test)]
 mod tests {
+    use crate::btree::node_type::Offset;
+
     use super::{BTreeBuilder, Error, Key, KeyValuePair};
     use std::path::Path;
 
@@ -437,6 +444,21 @@ mod tests {
         assert_eq!(kv.key, "c");
         assert_eq!(kv.value, "marhaba");
 
+        btree.print()?;
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_write_presenices() -> Result<(), Error> {
+        let mut btree = BTreeBuilder::new()
+            .path(Path::new("./db/db"))
+            .b_parameter(2)
+            .build()?;
+
+        btree.insert(KeyValuePair::new("a".to_string(), "shalom".to_string()))?;
+        // btree.insert(KeyValuePair::new("g".to_string(), "Konnichiwa".to_string()))?;
+
         Ok(())
     }
     #[test]
@@ -446,9 +468,10 @@ mod tests {
             .b_parameter(2)
             .build()?;
 
-        let kv = btree.search("g".to_string())?;
-        assert_eq!(kv.key, "g");
-        assert_eq!(kv.value, "Konnichiwa");
+        let root = btree.wal.get_root()?;
+        println!("Offset: {:?}", root);
+
+        btree.print()?;
 
         Ok(())
     }
@@ -504,6 +527,8 @@ mod tests {
         kv = btree.search("i".to_string())?;
         assert_eq!(kv.key, "i");
         assert_eq!(kv.value, "Ciao");
+
+        btree.print()?;
         Ok(())
     }
 

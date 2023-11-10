@@ -1,6 +1,6 @@
 use std::{env, ffi::OsString};
 
-use crate::errors::{DBError, DatabaseError};
+use crate::errors::Error;
 
 #[derive(Debug)]
 pub struct Config {
@@ -19,18 +19,18 @@ impl Default for Config {
     }
 }
 
-pub fn parse_args() -> DBError<Config> {
+pub fn parse_args() -> Result<Config, Error> {
     let mut config = Config::default();
     let mut args = env::args_os();
 
     while let Some(arg) = args.next() {
         match arg.as_os_str().to_str().expect("Failed to parse argument") {
             "--host" => {
-                let value = args.next().ok_or_else(|| DatabaseError::Argument)?;
+                let value = args.next().ok_or_else(|| Error::Argument)?;
                 config.address = value;
             }
             "--port" => {
-                let value = args.next().ok_or_else(|| DatabaseError::Argument)?;
+                let value = args.next().ok_or_else(|| Error::Argument)?;
                 config.port = value;
             }
             "--repl" => {

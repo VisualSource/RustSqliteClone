@@ -2,9 +2,10 @@ use super::{
     error::Error,
     node::Node,
     page_layout::{
-        ToByte, INTERNAL_NODE_HEADER_SIZE, INTERNAL_NODE_NUM_CHILDREN_OFFSET,
-        INTERNAL_NODE_NUM_CHILDREN_SIZE, IS_ROOT_OFFSET, NODE_TYPE_OFFSET, PAGE_SIZE,
-        PARENT_POINTER_SIZE, PARENT_PONTER_OFFSET, PTR_SIZE, ROW_NUM_OFFSET, ROW_NUM_SIZE,
+        ToByte, COMMON_NODE_HEADER_SIZE, INTERNAL_NODE_HEADER_SIZE,
+        INTERNAL_NODE_NUM_CHILDREN_OFFSET, INTERNAL_NODE_NUM_CHILDREN_SIZE, IS_ROOT_OFFSET,
+        NODE_TYPE_OFFSET, PAGE_SIZE, PARENT_POINTER_SIZE, PARENT_PONTER_OFFSET, PTR_SIZE,
+        ROW_NUM_OFFSET, ROW_NUM_SIZE, SCHEMA_DATA_LEN_OFFSET, SCHMEA_DATA_LEN_SIZE,
     },
     structure::{Offset, Usize},
 };
@@ -85,7 +86,7 @@ impl TryFrom<&Node> for Page {
         data[IS_ROOT_OFFSET] = node.is_root.to_byte();
         data[NODE_TYPE_OFFSET] = u8::from(&node.node_type);
 
-        // | IS-ROOT 1 byte | TYPE 1 byte | OFFSET - 8 bytes | rows - 8 byte
+        // | IS-ROOT 1 byte | TYPE 1 byte | OFFSET - 8 bytes |
 
         if !node.is_root {
             match node.parent_offset {
@@ -97,7 +98,7 @@ impl TryFrom<&Node> for Page {
         }
 
         match &node.node_type {
-            super::node_type::NodeType::Schema(offsets, keys) => {
+            super::node_type::NodeType::Internal(offsets, keys) => {
                 data[INTERNAL_NODE_NUM_CHILDREN_OFFSET
                     ..INTERNAL_NODE_NUM_CHILDREN_OFFSET + INTERNAL_NODE_NUM_CHILDREN_SIZE]
                     .clone_from_slice(&offsets.len().to_be_bytes());
@@ -119,7 +120,18 @@ impl TryFrom<&Node> for Page {
 
                 data[page_offset..page_offset + len].clone_from_slice(&encoded_keys);
 
-                page_offset += len
+                //page_offset += len
+            }
+            super::node_type::NodeType::Schema(schema) => {
+                let enconded_data = bincode::serde::encode_to_vec(schema, config)?;
+                let encoded_len = enconded_data.len();
+                // write content data size
+                data[SCHEMA_DATA_LEN_OFFSET..SCHEMA_DATA_LEN_OFFSET + SCHMEA_DATA_LEN_SIZE]
+                    .clone_from_slice(&encoded_len.to_be_bytes());
+
+                let offset = SCHEMA_DATA_LEN_OFFSET + SCHMEA_DATA_LEN_SIZE;
+
+                data[offset..offset + encoded_len].clone_from_slice(&enconded_data);
             }
             super::node_type::NodeType::Leaf(rows) => {
                 data[ROW_NUM_OFFSET..ROW_NUM_OFFSET + ROW_NUM_SIZE]
@@ -141,7 +153,11 @@ impl TryFrom<&Node> for Page {
                     page_offset += data_len
                 }
             }
-            super::node_type::NodeType::Unexpected => return Err(Error::Unexpected),
+            super::node_type::NodeType::Unexpected => {
+                return Err(Error::UnexpectedWithReason(
+                    "Failed to parse node into binary",
+                ))
+            }
         }
 
         Ok(Page::new(data))

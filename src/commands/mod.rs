@@ -3,8 +3,6 @@ pub mod execute;
 pub mod meta;
 pub mod prepare;
 
-use crate::structure::Col;
-
 #[derive(Debug, PartialEq)]
 pub enum Statement {
     /// insert into {TABLE} {COLLUMN-NAME?(,)} VALUES (expr?(,))
@@ -18,7 +16,8 @@ pub enum Statement {
         columns: Vec<String>,
     },
     Create {
+        primary_key: usize,
         table: String,
-        cols: Vec<Col>,
+        cols: Vec<(String, u8, bool)>,
     },
 }

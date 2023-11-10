@@ -16,13 +16,19 @@ impl Pager {
             .create(true)
             .read(true)
             .write(true)
-            .truncate(true)
+            .truncate(false)
             .open(path)?;
 
         Ok(Pager {
             file: fd,
             curser: 0,
         })
+    }
+
+    pub fn is_empty(&mut self) -> Result<bool, Error> {
+        let len = self.file.seek(SeekFrom::End(0))?;
+
+        Ok(len <= 0)
     }
 
     pub fn get_page(&mut self, offset: &Offset) -> Result<Page, Error> {

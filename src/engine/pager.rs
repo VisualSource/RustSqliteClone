@@ -1,7 +1,7 @@
 use std::{
     fs::{File, OpenOptions},
     io::{Read, Seek, SeekFrom, Write},
-    path::Path,
+    path::PathBuf,
 };
 
 use super::{error::Error, page::Page, page_layout::PAGE_SIZE, structure::Offset};
@@ -12,7 +12,7 @@ pub struct Pager {
 }
 
 impl Pager {
-    pub fn new(path: &Path) -> Result<Self, Error> {
+    pub fn new(path: PathBuf) -> Result<Self, Error> {
         let fd = OpenOptions::new()
             .create(true)
             .read(true)
@@ -24,6 +24,24 @@ impl Pager {
             file: fd,
             curser: 0,
         })
+    }
+
+    pub fn set_cursor(&mut self, curser: usize) {
+        self.curser = curser;
+    }
+
+    pub fn get_schema(&mut self) -> Result<Page, Error> {
+        let mut page: [u8; 512] = [0x00; 512];
+        self.file.seek(SeekFrom::Start(0))?;
+        self.file.read_exact(&mut page)?;
+
+        let mut temp: [u8; PAGE_SIZE] = [0x00; PAGE_SIZE];
+
+        for x in 0..512 {
+            temp[x] = page[x];
+        }
+
+        Ok(Page::new(temp))
     }
 
     pub fn get_page(&mut self, offset: &Offset) -> Result<Page, Error> {
@@ -45,5 +63,11 @@ impl Pager {
         self.file.seek(SeekFrom::Start(offset.0 as u64))?;
         self.file.write_all(&page.get_data())?;
         Ok(())
+    }
+
+    pub fn is_empty(&mut self) -> Result<bool, Error> {
+        let len = self.file.seek(SeekFrom::End(0))?;
+
+        Ok(len <= 0)
     }
 }

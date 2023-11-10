@@ -4,7 +4,8 @@ use super::{
     page::Page,
     page_layout::{
         FromByte, INTERNAL_NODE_HEADER_SIZE, INTERNAL_NODE_NUM_CHILDREN_OFFSET, IS_ROOT_OFFSET,
-        NODE_TYPE_OFFSET, PARENT_PONTER_OFFSET, PTR_SIZE, ROW_NUM_OFFSET,
+        NODE_TYPE_OFFSET, PARENT_PONTER_OFFSET, PTR_SIZE, ROW_NUM_OFFSET, SCHEMA_DATA_LEN_OFFSET,
+        SCHMEA_DATA_LEN_SIZE,
     },
     structure::{Offset, Record, Value},
 };
@@ -27,7 +28,7 @@ impl Node {
 
     pub fn split(&mut self, b: usize) -> Result<(Value, Node), Error> {
         match self.node_type {
-            NodeType::Schema(ref mut children, ref mut keys) => {
+            NodeType::Internal(ref mut children, ref mut keys) => {
                 let mut sibling_keys = keys.split_off(b - 1);
                 let median_key = sibling_keys.remove(0);
                 let sibling_children = children.split_off(b);
@@ -35,12 +36,13 @@ impl Node {
                 Ok((
                     median_key,
                     Node::new(
-                        NodeType::Schema(sibling_children, sibling_keys),
+                        NodeType::Internal(sibling_children, sibling_keys),
                         false,
                         self.parent_offset.clone(),
                     ),
                 ))
             }
+            NodeType::Schema(_) => Err(Error::UnexpectedWithReason("Can not split a schema node")),
             NodeType::Leaf(ref mut rows) => {
                 let sibling_rows = rows.split_off(b);
 
@@ -75,7 +77,29 @@ impl TryFrom<Page> for Node {
         };
         let config = bincode::config::standard();
         match node_type {
-            NodeType::Schema(mut children, mut keys) => {
+            NodeType::Schema(mut schema) => {
+                let data_len = page.get_value_from_offset(SCHEMA_DATA_LEN_OFFSET)?;
+
+                let buffer = page
+                    .get_ptr_from_offset(SCHEMA_DATA_LEN_OFFSET + SCHMEA_DATA_LEN_SIZE, data_len);
+
+                let (data, size) = bincode::serde::decode_from_slice(&buffer, config)?;
+
+                if size != data_len {
+                    return Err(Error::UnexpectedWithReason(
+                        "Decoded data size did not match writen size",
+                    ));
+                }
+
+                schema = data;
+
+                Ok(Node {
+                    node_type: NodeType::Schema(schema),
+                    is_root,
+                    parent_offset,
+                })
+            }
+            NodeType::Internal(mut children, mut keys) => {
                 let num_children = page.get_value_from_offset(INTERNAL_NODE_NUM_CHILDREN_OFFSET)?;
 
                 let mut offset = INTERNAL_NODE_HEADER_SIZE;
@@ -101,10 +125,10 @@ impl TryFrom<Page> for Node {
                     ));
                 }
 
-                offset += content_len;
+                keys = data;
 
                 Ok(Node::new(
-                    NodeType::Schema(children, keys),
+                    NodeType::Internal(children, keys),
                     is_root,
                     parent_offset,
                 ))
@@ -126,7 +150,9 @@ impl TryFrom<Page> for Node {
                         bincode::serde::decode_from_slice(&buffer, config)?;
 
                     if data_len != data_length {
-                        return Err(Error::Unexpected);
+                        return Err(Error::UnexpectedWithReason(
+                            "Content len does not match decoded len.",
+                        ));
                     }
 
                     offset += data_length;
@@ -136,7 +162,9 @@ impl TryFrom<Page> for Node {
 
                 Ok(Node::new(NodeType::Leaf(rows), is_root, parent_offset))
             }
-            NodeType::Unexpected => Err(Error::Unexpected),
+            NodeType::Unexpected => Err(Error::UnexpectedWithReason(
+                "Failed to parse page: Unexpected Node ID",
+            )),
         }
     }
 }

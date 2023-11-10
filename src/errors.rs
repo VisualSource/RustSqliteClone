@@ -1,25 +1,21 @@
-use std::num::ParseIntError;
-
+use crate::engine::error::Error as EngineError;
+use crate::sql::error::Error as SqlError;
 use thiserror::Error;
 
 #[derive(Error, Debug)]
-pub enum DatabaseError {
-    #[error("Failed to parse arguments")]
+pub enum Error {
+    #[error("Database engine error: {0}")]
+    Engine(#[from] EngineError),
+    #[error("Sql Error: {0}")]
+    Sql(#[from] SqlError),
+    #[error("Io Error: {0}")]
+    Io(#[from] std::io::Error),
+    #[error("Utf8 convertion error: {0}")]
+    Utf8(#[from] std::str::Utf8Error),
+    #[error("Invaild Argument")]
     Argument,
-
-    #[error("Failed to parse int")]
-    ParseInt(#[from] ParseIntError),
-
-    #[error("{0}")]
-    Execution(String),
-
-    #[error("Invaild systax: {0}")]
-    SystaxError(&'static str),
-
-    #[error("Systax Error: {0}")]
-    TokenizerError(String),
-    #[error("Failed to convert to required type")]
-    ConvertionError(#[from] std::convert::Infallible),
+    #[error("Unexpexted Error: {0}")]
+    Unexpexted(&'static str),
+    #[error("Serde Error: {0}")]
+    Serde(#[from] serde_json::Error),
 }
-
-pub type DBError<T> = Result<T, DatabaseError>;

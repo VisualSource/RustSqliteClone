@@ -1,13 +1,13 @@
 use super::{
     error::Error,
     node::Node,
-    node_type::{self, NodeType},
+    node_type::{self, NodeType, Schema},
     page::Page,
     pager::Pager,
     structure::{Offset, Record, Value},
     wal::Wal,
 };
-use std::{path::Path, vec};
+use std::{path::PathBuf, vec};
 
 pub struct BTree {
     pager: Pager,
@@ -16,14 +16,15 @@ pub struct BTree {
 }
 
 pub struct BTreeBuilder {
-    path: &'static Path,
+    path: PathBuf,
     b: usize,
 }
 
 impl BTree {
     fn is_node_full(&self, node: &Node) -> Result<bool, Error> {
         match &node.node_type {
-            NodeType::Schema(_, keys) => Ok(keys.len() == (2 * self.b - 1)),
+            NodeType::Schema(_) => Ok(true),
+            NodeType::Internal(_, keys) => Ok(keys.len() == (2 * self.b - 1)),
             NodeType::Leaf(rows) => Ok(rows.len() == (2 * self.b - 1)),
             NodeType::Unexpected => Err(Error::Unexpected),
         }
@@ -31,14 +32,45 @@ impl BTree {
 
     fn is_node_underflow(&self, node: &Node) -> Result<bool, Error> {
         match &node.node_type {
-            NodeType::Schema(_, keys) => Ok(keys.len() < self.b - 1 && !node.is_root),
+            NodeType::Schema(_) => Ok(false),
+            NodeType::Internal(_, keys) => Ok(keys.len() < self.b - 1 && !node.is_root),
             NodeType::Leaf(rows) => Ok(rows.len() < self.b - 1 && !node.is_root),
             NodeType::Unexpected => Err(Error::Unexpected),
         }
     }
 
+    pub fn get_table(&mut self) -> Result<Schema, Error> {
+        let page = self.pager.get_schema()?;
+
+        let node = Node::try_from(page)?;
+
+        match node.node_type {
+            NodeType::Schema(schema) => Ok(schema),
+            _ => Err(Error::Unexpected),
+        }
+    }
+
+    pub fn create_table(&mut self, schema: Schema) -> Result<(), Error> {
+        //let root_page = self.pager.get_page(&Offset(0))?;
+        let root_offset = Offset(256);
+
+        let schema_node = Node::new(NodeType::Schema(schema), true, None);
+
+        self.pager
+            .write_page_at_offset(Page::try_from(&schema_node)?, &Offset(0))?;
+
+        let node = Node::new(NodeType::Leaf(vec![]), true, None);
+
+        self.pager.set_cursor(root_offset.0);
+
+        let root = self.pager.write_page(Page::try_from(&node)?)?;
+
+        self.wal.set_root(&root)
+    }
+
     pub fn insert(&mut self, row: Record) -> Result<(), Error> {
         let root_offset = self.wal.get_root()?;
+
         let root_page = self.pager.get_page(&root_offset)?;
 
         let new_root_offset: Offset;
@@ -46,7 +78,7 @@ impl BTree {
         let mut root = Node::try_from(root_page)?;
 
         if self.is_node_full(&root)? {
-            new_root = Node::new(NodeType::Schema(vec![], vec![]), true, None);
+            new_root = Node::new(NodeType::Internal(vec![], vec![]), true, None);
             new_root_offset = self.pager.write_page(Page::try_from(&new_root)?)?;
 
             root.parent_offset = Some(new_root_offset.clone());
@@ -58,18 +90,19 @@ impl BTree {
             let sibling_offset = self.pager.write_page(Page::try_from(&sibling)?)?;
 
             new_root.node_type =
-                NodeType::Schema(vec![old_root_offset, sibling_offset], vec![median]);
+                NodeType::Internal(vec![old_root_offset, sibling_offset], vec![median]);
 
             self.pager
                 .write_page_at_offset(Page::try_from(&new_root)?, &new_root_offset)?;
         } else {
             new_root = root.clone();
             new_root_offset = self.pager.write_page(Page::try_from(&new_root)?)?;
+            println!("new Root Offset {:?}", new_root_offset);
         }
 
         self.insert_non_full(&mut new_root, new_root_offset.clone(), row)?;
 
-        self.wal.set_root(new_root_offset)
+        self.wal.set_root(&new_root_offset)
     }
 
     fn insert_non_full(
@@ -79,11 +112,19 @@ impl BTree {
         row: Record,
     ) -> Result<(), Error> {
         match &mut node.node_type {
-            NodeType::Schema(ref mut children, ref mut keys) => {
+            NodeType::Schema(_) => {
+                return Err(Error::UnexpectedWithReason(
+                    "Should not insert on schema node",
+                ))
+            }
+            NodeType::Internal(ref mut children, ref mut keys) => {
                 let key = row.0.get(0).expect("Failed to get key").clone();
                 let idx = keys.binary_search(&key.clone()).unwrap_or_else(|x| x);
 
-                let child_offset = children.get(0).ok_or(Error::Unexpected)?.clone();
+                let child_offset = children
+                    .get(0)
+                    .ok_or(Error::UnexpectedWithReason("Failed to get child offset"))?
+                    .clone();
                 let child_page = self.pager.get_page(&child_offset)?;
 
                 let mut child = Node::try_from(child_page)?;
@@ -117,14 +158,16 @@ impl BTree {
                 }
             }
             NodeType::Leaf(ref mut rows) => {
-                let idx = rows.binary_search(&row).unwrap_or_else(|x| x);
+                //let idx = rows.binary_search().unwrap_or_else(|x| x);
 
-                rows.insert(idx, row);
+                rows.push(row);
 
                 self.pager
                     .write_page_at_offset(Page::try_from(&*node)?, &node_offset)
             }
-            NodeType::Unexpected => Err(Error::Unexpected),
+            NodeType::Unexpected => Err(Error::UnexpectedWithReason(
+                "Failed to insert into unknown node.",
+            )),
         }
     }
 
@@ -137,12 +180,23 @@ impl BTree {
 
     fn search_node(&mut self, node: Node, search: Value) -> Result<Record, Error> {
         match node.node_type {
-            NodeType::Schema(children, keys) => {
+            NodeType::Schema(schmea) => {
+                if let Some(child_offset) = schmea.get_child_offset() {
+                    let page = self.pager.get_page(&child_offset)?;
+                    let child_node = Node::try_from(page)?;
+
+                    self.search_node(child_node, search)
+                } else {
+                    Err(Error::NotFound)
+                }
+            }
+            NodeType::Internal(children, keys) => {
                 let idx = keys.binary_search(&search).unwrap_or_else(|x| x);
 
-                let child_offset = children.get(0).ok_or(Error::Unexpected)?;
+                let child_offset = children.get(idx).ok_or(Error::Unexpected)?;
                 let page = self.pager.get_page(child_offset)?;
                 let child_node = Node::try_from(page)?;
+
                 self.search_node(child_node, search)
             }
             NodeType::Leaf(rows) => {
@@ -154,7 +208,7 @@ impl BTree {
 
                 return Err(Error::NotFound);
             }
-            NodeType::Unexpected => todo!(),
+            NodeType::Unexpected => Err(Error::Unexpected),
         }
     }
 
@@ -167,7 +221,7 @@ impl BTree {
         let new_root_offset = self.pager.write_page(new_root_page)?;
 
         self.delete_key_from_subtree(key, &mut new_root, &new_root_offset)?;
-        self.wal.set_root(new_root_offset)
+        self.wal.set_root(&new_root_offset)
     }
 
     fn delete_key_from_subtree(
@@ -177,7 +231,10 @@ impl BTree {
         node_offset: &Offset,
     ) -> Result<(), Error> {
         match &mut node.node_type {
-            NodeType::Schema(children, keys) => {
+            NodeType::Schema(_) => {
+                return Err(Error::UnexpectedWithReason("Cant not delete schema node"))
+            }
+            NodeType::Internal(children, keys) => {
                 let node_idx = keys.binary_search(&key).unwrap_or_else(|x| x);
 
                 let child_offset = children.get(node_idx).ok_or(Error::Unexpected)?;
@@ -209,7 +266,7 @@ impl BTree {
 
                 self.borrow_if_needed(node.to_owned(), &key)?;
             }
-            NodeType::Unexpected => todo!(),
+            NodeType::Unexpected => return Err(Error::Unexpected),
         }
 
         Ok(())
@@ -222,7 +279,10 @@ impl BTree {
             let mut parent_node = Node::try_from(parent_page)?;
 
             match parent_node.node_type {
-                NodeType::Schema(ref mut children, ref mut keys) => {
+                NodeType::Schema(_) => {
+                    return Err(Error::UnexpectedWithReason("Cant not borrow schema node"))
+                }
+                NodeType::Internal(ref mut children, ref mut keys) => {
                     let idx = keys.binary_search(key).unwrap_or_else(|x| x);
 
                     let sibling_idx = match idx > 0 {
@@ -243,7 +303,7 @@ impl BTree {
                     children.remove(merged_node_idx);
 
                     if parent_node.is_root && children.is_empty() {
-                        self.wal.set_root(merged_node_offset)?;
+                        self.wal.set_root(&merged_node_offset)?;
                         return Ok(());
                     }
 
@@ -265,8 +325,9 @@ impl BTree {
 
     fn merge(&self, first: Node, second: Node) -> Result<Node, Error> {
         match first.node_type {
-            NodeType::Schema(first_offset, first_keys) => {
-                if let NodeType::Schema(second_offsets, second_keys) = second.node_type {
+            NodeType::Schema(_) => Err(Error::UnexpectedWithReason("Can not merge schema node")),
+            NodeType::Internal(first_offset, first_keys) => {
+                if let NodeType::Internal(second_offsets, second_keys) = second.node_type {
                     let merged_keys: Vec<Value> = first_keys
                         .into_iter()
                         .chain(second_keys.into_iter())
@@ -277,7 +338,7 @@ impl BTree {
                         .chain(second_offsets.into_iter())
                         .collect();
 
-                    let node_type = NodeType::Schema(merged_offsets, merged_keys);
+                    let node_type = NodeType::Internal(merged_offsets, merged_keys);
                     return Ok(Node::new(node_type, first.is_root, first.parent_offset));
                 }
                 Err(Error::Unexpected)
@@ -296,16 +357,71 @@ impl BTree {
             NodeType::Unexpected => Err(Error::Unexpected),
         }
     }
+
+    fn print_sub_tree(&mut self, prefix: String, offset: Offset) -> Result<(), Error> {
+        println!("{} Node at offset: {}", prefix, offset.0);
+
+        let curr_prefix = format!("{} |->", prefix);
+        let page = self.pager.get_page(&offset)?;
+        let node = Node::try_from(page)?;
+
+        match node.node_type {
+            NodeType::Schema(_) => Err(Error::UnexpectedWithReason(
+                "Should not have started with schema node.",
+            )),
+            NodeType::Internal(children, keys) => {
+                println!("{} Keys {:?}", curr_prefix, keys);
+                println!("{} Children: {:?}", curr_prefix, children);
+
+                let child_prefix = format!("{}   |  ", prefix);
+                for child_offset in children {
+                    self.print_sub_tree(child_prefix.clone(), child_offset)?;
+                }
+                Ok(())
+            }
+            NodeType::Leaf(rows) => {
+                println!("{} Rows {:?}", curr_prefix, rows);
+                Ok(())
+            }
+            NodeType::Unexpected => Err(Error::Unexpected),
+        }
+    }
+
+    pub fn print(&mut self) -> Result<(), Error> {
+        println!();
+
+        let schema = self.get_table()?;
+
+        println!("=== TABLE {} ===", schema.name);
+
+        for (idx, col) in schema.columns.iter().enumerate() {
+            println!(
+                "{}{}{}: {}",
+                if schema.primary_key == idx {
+                    "Primary Key: "
+                } else {
+                    ""
+                },
+                col.0,
+                if col.2 == true { "?" } else { "" },
+                Value::print_type(col.1)
+            );
+        }
+        println!();
+
+        let root_offset = self.wal.get_root()?;
+        self.print_sub_tree("".to_string(), root_offset)
+    }
 }
 
 impl BTreeBuilder {
     pub fn new() -> Self {
         Self {
-            path: Path::new(""),
+            path: PathBuf::new(),
             b: 0,
         }
     }
-    pub fn path(mut self, path: &'static Path) -> Self {
+    pub fn path(mut self, path: PathBuf) -> Self {
         self.path = path;
         self
     }
@@ -325,98 +441,95 @@ impl BTreeBuilder {
             ));
         }
 
-        let mut pager = Pager::new(self.path)?;
-        let root = Node::new(NodeType::Leaf(vec![]), true, None);
-        let root_offset = pager.write_page(Page::try_from(&root)?)?;
+        //let mut pager = ?;
 
-        let parent_directory = self.path.parent().unwrap_or_else(|| Path::new("/tmp"));
-
-        let mut wal = Wal::new(parent_directory.to_path_buf())?;
-        wal.set_root(root_offset)?;
+        let parent_directory = self
+            .path
+            .parent()
+            .ok_or_else(|| Error::UnexpectedWithReason("Failed to get parent of given path."))?;
 
         Ok(BTree {
-            pager,
+            pager: Pager::new(self.path.clone())?,
             b: self.b,
-            wal,
+            wal: Wal::new(parent_directory.to_path_buf())?,
         })
-    }
-}
-
-impl Default for BTreeBuilder {
-    fn default() -> Self {
-        BTreeBuilder::new()
-            .b_parameter(200)
-            .path(Path::new("/tmp/db"))
     }
 }
 
 #[cfg(test)]
 mod test {
     use super::*;
-    #[test]
-    fn test_insert_get() {
+
+    fn get_db() -> BTree {
         let mut tree = match BTreeBuilder::new()
             .b_parameter(10)
-            .path(Path::new("./db/test.bin"))
+            .path(PathBuf::from("./db/test.bin"))
             .build()
         {
             Ok(value) => value,
             Err(e) => panic!("{}", e),
         };
 
-        if let Err(e) = tree.insert(Record(vec![Value::U64(0), Value::String("Test".into())])) {
-            panic!("{}", e);
-        }
+        tree.pager.set_cursor(256);
 
-        match tree.search(Value::U64(0)) {
-            Ok(v) => {
-                println!("{:#?}", v);
-            }
-            Err(e) => panic!("{}", e),
+        tree
+    }
+    #[test]
+    fn test_print_schmea() {
+        let mut db = get_db();
+        if let Err(err) = db.print() {
+            panic!("{}", err)
+        };
+    }
+    #[test]
+    fn test_create_table() {
+        let mut db = get_db();
+
+        let schema = Schema::new(
+            "Users".into(),
+            0,
+            vec![
+                ("id".into(), 0x02, false),   // column id: u64 not null
+                ("name".into(), 0x01, false), // column name: string not null
+                ("email".into(), 0x01, true), // column: "email" string nullable
+            ],
+            None,
+        );
+
+        if let Err(err) = db.create_table(schema) {
+            panic!("{}", err);
         }
     }
-    
-    #[test]
-    fn test_get() {
-        let mut tree = match BTreeBuilder::new()
-            .b_parameter(10)
-            .path(Path::new("./db/test.bin"))
-            .build()
-        {
-            Ok(value) => value,
-            Err(e) => panic!("{}", e),
-        };
-
-        match tree.search(Value::U64(1)) {
-            Ok(v) => println!("{:#?}", v),
-            Err(e) => panic!("{}", e),
-        }
-    }
 
     #[test]
-    fn test_insert() -> Result<(), Error> {
-        let mut tree = match BTreeBuilder::new()
-            .b_parameter(10)
-            .path(Path::new("./db/test.bin"))
-            .build()
-        {
-            Ok(v) => v,
-            Err(e) => panic!("{}", e),
-        };
+    fn test_insert() {
+        let mut tree = get_db();
 
         if let Err(e) = tree.insert(Record(vec![
-            Value::U64(0),
-            Value::String("Hello There".into()),
+            Value::U64(1),
+            Value::String("Hello".into()),
+            Value::Null,
         ])) {
             panic!("{}", e);
         }
+    }
 
-        if let Err(e) = tree.insert(Record(vec![Value::U64(1), Value::String("Yo".into())])) {
-            panic!("{}", e);
+    #[test]
+    fn test_print() {
+        let mut tree = get_db();
+
+        if let Err(err) = tree.print() {
+            panic!("{}", err);
+        };
+    }
+
+    #[test]
+    fn test_get() {
+        let mut tree = get_db();
+
+        match tree.search(Value::U64(0)) {
+            Ok(v) => println!("{:#?}", v),
+            Err(e) => panic!("{}", e),
         }
-
-        //println!("{:#?}", tree.search(Value::U64(0)));
-
-        Ok(())
     }
 }

@@ -28,6 +28,9 @@ pub const INTERNAL_NODE_NUM_CHILDREN_SIZE: usize = PTR_SIZE;
 pub const INTERNAL_NODE_HEADER_SIZE: usize =
     COMMON_NODE_HEADER_SIZE + INTERNAL_NODE_NUM_CHILDREN_SIZE;
 
+pub const SCHMEA_DATA_LEN_SIZE: usize = PTR_SIZE;
+pub const SCHEMA_DATA_LEN_OFFSET: usize = COMMON_NODE_HEADER_SIZE;
+
 pub trait FromByte {
     fn from_byte(&self) -> bool;
 }

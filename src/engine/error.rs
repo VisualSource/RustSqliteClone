@@ -17,4 +17,8 @@ pub enum Error {
     UnexpectedWithReason(&'static str),
     #[error("Not Found")]
     NotFound,
+    #[error("Transform Erorr: {0}")]
+    Serde(#[from] serde_json::Error),
+    #[error("Validation Error: {0}")]
+    Validate(String),
 }

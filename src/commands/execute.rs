@@ -1,15 +1,43 @@
 use super::Statement;
-use crate::errors::{DBError, DatabaseError};
-use crate::structure::{DataType, Record, Table, Value};
-use std::collections::BTreeMap;
+use crate::engine::structure::Record;
+use crate::engine::{btree::BTreeBuilder, node_type::Schema};
+use crate::errors::Error;
+use std::path::PathBuf;
 
 // id | username | email
 
-pub fn execute_statement(
-    statement: &Statement,
-    db: &mut BTreeMap<String, (Table, Vec<Record>)>,
-) -> DBError<Option<Vec<Vec<Value>>>> {
+pub fn execute_statement(statement: &Statement) -> Result<Option<Vec<Record>>, Error> {
     match statement {
+        Statement::Insert { cols, data, table } => todo!(),
+        Statement::Select { table, columns } => todo!(),
+        Statement::Create {
+            table,
+            cols,
+            primary_key,
+        } => {
+            let path = format!("./db/{}/table", table.to_lowercase().replace(" ", "_"));
+
+            let mut db = BTreeBuilder::new()
+                .b_parameter(10)
+                .path(PathBuf::from(path))
+                .build()?;
+
+            let schema = Schema::new(
+                table.to_owned(),
+                primary_key.to_owned(),
+                cols.to_owned(),
+                None,
+            );
+
+            db.create_table(schema)?;
+
+            Ok(None)
+        }
+    }
+}
+
+/*
+match statement {
         Statement::Insert { cols, data, table } => {
             let (table_info, rows) = db.get_mut(table).ok_or_else(|| {
                 DatabaseError::Execution(format!("There is no table with the name '{}'.", table))
@@ -149,4 +177,5 @@ pub fn execute_statement(
             ))
         }
     }
-}
+
+*/
