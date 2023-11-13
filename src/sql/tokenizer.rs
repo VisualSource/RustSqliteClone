@@ -11,6 +11,7 @@ pub enum Token {
     String(String),
     Number(String),
     Ident(String),
+    EOL,
 }
 
 impl Token {

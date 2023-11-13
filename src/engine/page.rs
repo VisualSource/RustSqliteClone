@@ -2,10 +2,10 @@ use super::{
     error::Error,
     node::Node,
     page_layout::{
-        ToByte, COMMON_NODE_HEADER_SIZE, INTERNAL_NODE_HEADER_SIZE,
-        INTERNAL_NODE_NUM_CHILDREN_OFFSET, INTERNAL_NODE_NUM_CHILDREN_SIZE, IS_ROOT_OFFSET,
-        NODE_TYPE_OFFSET, PAGE_SIZE, PARENT_POINTER_SIZE, PARENT_PONTER_OFFSET, PTR_SIZE,
-        ROW_NUM_OFFSET, ROW_NUM_SIZE, SCHEMA_DATA_LEN_OFFSET, SCHMEA_DATA_LEN_SIZE,
+        ToByte, INTERNAL_NODE_HEADER_SIZE, INTERNAL_NODE_NUM_CHILDREN_OFFSET,
+        INTERNAL_NODE_NUM_CHILDREN_SIZE, IS_ROOT_OFFSET, NODE_TYPE_OFFSET, PAGE_SIZE,
+        PARENT_POINTER_SIZE, PARENT_PONTER_OFFSET, PTR_SIZE, ROW_NUM_OFFSET, ROW_NUM_SIZE,
+        SCHEMA_DATA_LEN_OFFSET, SCHMEA_DATA_LEN_SIZE,
     },
     structure::{Offset, Usize},
 };
@@ -21,7 +21,7 @@ impl Page {
         }
     }
 
-    pub fn write_value_at_offset(&mut self, offset: usize, value: usize) -> Result<(), Error> {
+    /*pub fn write_value_at_offset(&mut self, offset: usize, value: usize) -> Result<(), Error> {
         if offset > PAGE_SIZE - PTR_SIZE {
             return Err(Error::OffsetOverflow);
         }
@@ -29,7 +29,7 @@ impl Page {
         let bytes = value.to_be_bytes();
         self.data[offset..offset + PTR_SIZE].clone_from_slice(&bytes);
         Ok(())
-    }
+    }*/
 
     pub fn get_value_from_offset(&self, offset: usize) -> Result<usize, Error> {
         let bytes = &self.data[offset..offset + PTR_SIZE];
@@ -38,35 +38,35 @@ impl Page {
         Ok(res)
     }
 
-    pub fn insert_bytes_at_offset(
-        &mut self,
-        bytes: &[u8],
-        offset: usize,
-        end_offset: usize,
-        size: usize,
-    ) -> Result<(), Error> {
-        if end_offset + size > self.data.len() {
-            return Err(Error::Unexpected);
+    /*pub fn insert_bytes_at_offset(
+            &mut self,
+            bytes: &[u8],
+            offset: usize,
+            end_offset: usize,
+            size: usize,
+        ) -> Result<(), Error> {
+            if end_offset + size > self.data.len() {
+                return Err(Error::Unexpected);
+            }
+
+            for idx in (offset..=end_offset).rev() {
+                self.data[idx + size] = self.data[idx];
+            }
+
+            self.data[offset..offset + size].clone_from_slice(bytes);
+            Ok(())
         }
 
-        for idx in (offset..=end_offset).rev() {
-            self.data[idx + size] = self.data[idx];
+        pub fn write_bytes_at_offset(
+            &mut self,
+            bytes: &[u8],
+            offset: usize,
+            size: usize,
+        ) -> Result<(), Error> {
+            self.data[offset..offset + size].clone_from_slice(bytes);
+            Ok(())
         }
-
-        self.data[offset..offset + size].clone_from_slice(bytes);
-        Ok(())
-    }
-
-    pub fn write_bytes_at_offset(
-        &mut self,
-        bytes: &[u8],
-        offset: usize,
-        size: usize,
-    ) -> Result<(), Error> {
-        self.data[offset..offset + size].clone_from_slice(bytes);
-        Ok(())
-    }
-
+    */
     pub fn get_ptr_from_offset(&self, offset: usize, size: usize) -> &[u8] {
         &self.data[offset..offset + size]
     }

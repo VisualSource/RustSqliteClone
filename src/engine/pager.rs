@@ -64,10 +64,4 @@ impl Pager {
         self.file.write_all(&page.get_data())?;
         Ok(())
     }
-
-    pub fn is_empty(&mut self) -> Result<bool, Error> {
-        let len = self.file.seek(SeekFrom::End(0))?;
-
-        Ok(len <= 0)
-    }
 }

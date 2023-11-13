@@ -1,7 +1,7 @@
 use crate::commands::execute::execute_statement;
 use crate::commands::prepare;
+use crate::engine::structure::Record;
 use crate::errors::Error;
-use serde_json::to_string;
 use std::io::{Read, Write};
 use std::net::{TcpListener, TcpStream};
 use std::sync::{Arc, Mutex};
@@ -19,16 +19,15 @@ fn create_response(value: String, status: &'static str, content_type: &'static s
 fn handle_request(value: &String, lock: Arc<Mutex<i32>>) -> Result<Option<String>, Error> {
     let statement = prepare::prepare_statement(&value)?;
 
-    lock.lock()
-        .map_err(|_| Error::Unexpexted("Failed to load"))?;
+    let result = { execute_statement(&statement)? };
 
-    if let Some(result) = execute_statement(&statement)? {
-        let content = to_string(&result)?;
-
-        return Ok(Some(content));
+    match result {
+        Some(data) => {
+            let content = serde_json::to_string::<Vec<Record>>(&data)?;
+            Ok(Some(content))
+        }
+        None => Ok(None),
     }
-
-    Ok(None)
 }
 
 fn handle_stream(mut stream: TcpStream, lock: Arc<Mutex<i32>>) -> Result<(), Error> {
@@ -67,7 +66,11 @@ fn handle_stream(mut stream: TcpStream, lock: Arc<Mutex<i32>>) -> Result<(), Err
             Some(v) => create_response(v, "200", "application/json"),
             None => create_response("[]".to_string(), "200", "application/json"),
         },
-        Err(err) => create_response(err.to_string(), "400", "application/json"),
+        Err(err) => create_response(
+            format!("{{\"error\":\"{}\"}}", err.to_string()),
+            "400",
+            "application/json",
+        ),
     };
 
     stream.write_all(res.as_bytes())?;
@@ -81,7 +84,7 @@ where
     T: std::string::ToString,
 {
     let config_address = address.to_string();
-    let config_port = address.to_string();
+    let config_port = port.to_string();
 
     let listener = TcpListener::bind(format!("{}:{}", config_address, config_port))?;
 

@@ -1,16 +1,17 @@
+use crate::sql::ColumnDef;
+
 use super::{
     error::Error,
     structure::{Offset, Record, Value},
 };
 use serde::{Deserialize, Serialize};
 
-type ColumnDefintion = (String, u8, bool);
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
 pub struct Schema {
     pub name: String,
     pub primary_key: usize,
     // (Column Name, Data Type, Nullable)
-    pub columns: Vec<ColumnDefintion>,
+    pub columns: Vec<ColumnDef>,
     child_offset: Option<usize>,
 }
 
@@ -29,7 +30,7 @@ impl Schema {
     pub fn new(
         name: String,
         primary_key_index: usize,
-        columns: Vec<ColumnDefintion>,
+        columns: Vec<ColumnDef>,
         child_offset: Option<usize>,
     ) -> Self {
         Self {
@@ -45,8 +46,22 @@ impl Schema {
         }
         None
     }
-    pub fn validate_record(&self, record: Record) -> Result<(), Error> {
-        let schema_len = self.column_len();
+
+    pub fn get_indexs_from_names(&self, values: &Vec<String>) -> Vec<usize> {
+        self.columns
+            .iter()
+            .enumerate()
+            .filter_map(|(idx, col)| {
+                if values.contains(&col.name) {
+                    return Some(idx);
+                }
+
+                None
+            })
+            .collect::<Vec<usize>>()
+    }
+    pub fn validate_record(&self, record: &Record) -> Result<(), Error> {
+        let schema_len = self.len();
 
         if record.len() != schema_len {
             return Err(Error::UnexpectedWithReason("Column does not match schema"));
@@ -56,11 +71,11 @@ impl Schema {
             let item = record.0.get(x).ok_or_else(|| Error::Unexpected)?;
             let col = self.columns.get(x).ok_or_else(|| Error::Unexpected)?;
 
-            if !item.is_type(col.1, col.2) {
+            if !item.is_type(col.data_type, col.nullable) {
                 return Err(Error::Validate(format!(
                     "value for column \"{}\" is not of type {}",
-                    col.0,
-                    Value::print_type(col.1)
+                    col.name,
+                    Value::print_type(col.data_type)
                 )));
             }
         }
@@ -68,10 +83,10 @@ impl Schema {
         Ok(())
     }
 
-    pub fn get_column_by_name(&self, column: String) -> Option<&ColumnDefintion> {
-        self.columns.iter().find(|x| x.0 == column)
+    pub fn get_column_idx_by_name(&self, column: &String) -> Option<usize> {
+        self.columns.iter().position(|x| &x.name == column)
     }
-    pub fn column_len(&self) -> usize {
+    pub fn len(&self) -> usize {
         self.columns.len()
     }
 }

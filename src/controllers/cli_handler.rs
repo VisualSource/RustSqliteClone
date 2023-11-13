@@ -4,6 +4,23 @@ use crate::{
 };
 use std::io::{stdin, stdout, Write};
 
+fn run_request(value: &String) -> Result<(), Error> {
+    let statement = prepare::prepare_statement(&value)?;
+
+    let result = execute::execute_statement(&statement)?;
+
+    if let Some(v) = result {
+        for x in v {
+            for a in x.0 {
+                print!("{} | ", a);
+            }
+            println!();
+        }
+    }
+
+    Ok(())
+}
+
 pub fn handle_cli() -> Result<(), Error> {
     let mut input = String::new();
 
@@ -21,16 +38,8 @@ pub fn handle_cli() -> Result<(), Error> {
             continue;
         }
 
-        let statement = prepare::prepare_statement(&input)?;
-
-        match execute::execute_statement(&statement) {
-            Ok(result) => match result {
-                Some(v) => {
-                    println!("{:?}", v);
-                }
-                None => println!(""),
-            },
-            Err(err) => eprintln!("{}", err),
+        if let Err(e) = run_request(&input) {
+            eprintln!("{}", e);
         }
     }
 }

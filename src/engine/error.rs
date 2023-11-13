@@ -1,3 +1,5 @@
+use std::num::ParseIntError;
+
 use thiserror::Error;
 #[derive(Debug, Error)]
 pub enum Error {
@@ -21,4 +23,7 @@ pub enum Error {
     Serde(#[from] serde_json::Error),
     #[error("Validation Error: {0}")]
     Validate(String),
+
+    #[error("Parse Int Error: {0}")]
+    ParseInt(#[from] ParseIntError),
 }
