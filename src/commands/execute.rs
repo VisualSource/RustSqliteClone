@@ -69,5 +69,22 @@ pub fn execute_statement(statement: &Statement) -> Result<Option<Vec<Record>>, E
 
             Ok(None)
         }
+        Statement::Delete { table, target } => todo!(),
+        Statement::Update {
+            table,
+            columns,
+            data,
+            target,
+        } => todo!(),
+        Statement::DropTable { table } => {
+            let table_name = table.to_lowercase().replace(" ", "_");
+            let path = PathBuf::from(format!("./db/{}", table_name));
+
+            if path.exists() {
+                fs::remove_dir_all(path)?;
+            }
+
+            Ok(None)
+        }
     }
 }

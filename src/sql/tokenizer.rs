@@ -28,7 +28,7 @@ impl Token {
 
     pub fn get_identifer(&self) -> Option<String> {
         match self {
-            Self::Ident(value) => Some(value.to_owned()),
+            Self::Ident(value) => Some(value.to_owned().to_lowercase()),
             _ => None,
         }
     }

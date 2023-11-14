@@ -25,16 +25,41 @@ macro_rules! peek_next {
 pub fn interpect(buffer: Vec<Token>) -> Result<Statement, Error> {
     let mut list = buffer.iter().peekable();
 
-    let index = list.next().ok_or_else(|| Error::Systax("Invaild token"))?;
+    let index = match next_token!(list).get_identifer() {
+        Some(value) => value,
+        None => return Err(Error::Systax("Invaild systax.")),
+    };
 
-    match index {
-        Token::Ident(value) => match value.to_lowercase().as_str() {
-            "insert" => parse_insert(&mut list),
-            "create" => parse_create_table(&mut list),
-            "select" => parse_select(&mut list),
-            _ => Err(Error::Systax("Expected insert,create,or select")),
+    match index.as_str() {
+        "create" => match next_token!(list).get_identifer() {
+            Some(value) => match value.as_str() {
+                "table" => parse_create_table(&mut list),
+                _ => Err(Error::Systax(
+                    "Expected 'INDEX|TABLE|TRIGGER|VIEW|VIRTUAL' after 'CREATE'.",
+                )),
+            },
+            None => Err(Error::Systax(
+                "Expected 'INDEX|TABLE|TRIGGER|VIEW|VIRTUAL' after 'CREATE'.",
+            )),
         },
-        _ => Err(Error::Systax("Expected identifer")),
+        "drop" => match next_token!(list).get_identifer() {
+            Some(value) => match value.as_str() {
+                "table" => parse_drop_table(&mut list),
+                _ => Err(Error::Systax(
+                    "Expected 'INDEX|TABLE|TRIGGER|VIEW' after 'DROP'.",
+                )),
+            },
+            None => Err(Error::Systax(
+                "Expected 'INDEX|TABLE|TRIGGER|VIEW' after 'DROP'.",
+            )),
+        },
+        "insert" => parse_insert(&mut list),
+        "select" => parse_select(&mut list),
+        "delete" => parse_delete(&mut list),
+        "update" => parse_update(&mut list),
+        _ => Err(Error::Systax(
+            "Expected 'CREATE|SELECT|DELETE|DROP|UPDATE|INSERT'.",
+        )),
     }
 }
 
@@ -107,6 +132,7 @@ fn parse_create_table(tokens: &mut TokenIter<'_>) -> Result<Statement, Error> {
                     table_cols.push(ColumnDef::new(
                         ident.to_owned(),
                         nullable,
+                        unique,
                         c,
                         autoincrement,
                         ordering,
@@ -365,6 +391,18 @@ fn parse_column_constraint(tokens: &mut TokenIter<'_>) -> Result<ColumnConstrain
         },
         _ => Ok(ColumnConstraint::None),
     }
+}
+
+pub fn parse_delete(tokens: &mut TokenIter<'_>) -> Result<Statement, Error> {
+    todo!()
+}
+
+pub fn parse_update(tokens: &mut TokenIter<'_>) -> Result<Statement, Error> {
+    todo!()
+}
+
+pub fn parse_drop_table(tokens: &mut TokenIter<'_>) -> Result<Statement, Error> {
+    todo!()
 }
 
 #[cfg(test)]

@@ -25,6 +25,7 @@ pub struct ColumnDef {
     pub name: String,
     pub nullable: bool,
     pub data_type: u8,
+    pub unique: bool,
     pub autoincrement: bool,
     pub ordering: Ordering,
     pub default_value: Option<String>,
@@ -34,12 +35,14 @@ impl ColumnDef {
     pub fn new(
         name: String,
         nullable: bool,
+        unique: bool,
         data_type: u8,
         autoincrement: bool,
         ordering: Ordering,
         default_value: Option<String>,
     ) -> Self {
         Self {
+            unique,
             name,
             nullable,
             data_type,
@@ -70,5 +73,18 @@ pub enum Statement {
         primary_key: usize,
         table: String,
         cols: Vec<ColumnDef>,
+    },
+    Delete {
+        table: String,
+        target: String,
+    },
+    Update {
+        table: String,
+        columns: Vec<String>,
+        data: Vec<ColumnData>,
+        target: String,
+    },
+    DropTable {
+        table: String,
     },
 }
