@@ -1,5 +1,12 @@
 use super::error::Error;
 
+#[macro_export]
+macro_rules! token {
+    ($value:tt) => {
+        crate::sql::tokenizer::Token::from($value)
+    };
+}
+
 #[derive(Debug, PartialEq)]
 pub enum Token {
     Comma,
@@ -30,6 +37,47 @@ impl Token {
         match self {
             Self::Ident(value) => Some(value.to_owned().to_lowercase()),
             _ => None,
+        }
+    }
+}
+
+impl From<&str> for Token {
+    fn from(value: &str) -> Self {
+        match value {
+            "(" => Token::LeftPren,
+            ")" => Token::RightPren,
+            "*" => Token::Star,
+            ";" => Token::SemiComma,
+            "," => Token::Comma,
+            "." => Token::Period,
+            _ => Token::Ident(value.into()),
+        }
+    }
+}
+
+impl From<String> for Token {
+    fn from(value: String) -> Self {
+        match value.as_str() {
+            "(" => Token::LeftPren,
+            ")" => Token::RightPren,
+            "*" => Token::Star,
+            ";" => Token::SemiComma,
+            "," => Token::Comma,
+            "." => Token::Period,
+            _ => Token::Ident(value),
+        }
+    }
+}
+
+impl From<char> for Token {
+    fn from(value: char) -> Self {
+        match value {
+            ')' => Self::RightPren,
+            '(' => Self::LeftPren,
+            ',' => Self::Comma,
+            '*' => Self::Star,
+            ';' => Self::SemiComma,
+            _ => Self::EOL,
         }
     }
 }
@@ -73,7 +121,7 @@ pub fn tokenizer(buffer: &String) -> Result<Vec<Token>, Error> {
                     }
                 }
 
-                tokens.push(Token::Ident(value));
+                tokens.push(token!(value));
             }
             '\"' => {
                 let mut value = String::default();
@@ -90,12 +138,8 @@ pub fn tokenizer(buffer: &String) -> Result<Vec<Token>, Error> {
 
                 tokens.push(Token::String(value))
             }
-            '(' => tokens.push(Token::LeftPren),
-            ')' => tokens.push(Token::RightPren),
-            '.' => tokens.push(Token::Period),
-            '*' => tokens.push(Token::Star),
-            ';' => tokens.push(Token::SemiComma),
-            ',' => tokens.push(Token::Comma),
+            '(' | ')' | '.' | '*' | ',' | ';' => tokens.push(token!(char)),
+
             _ => {
                 return Err(Error::UnknownChar(format!(
                     ": Unknown char: {}",

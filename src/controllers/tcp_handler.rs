@@ -1,4 +1,5 @@
-use crate::commands::execute::{execute_statement, AccessLockTable, LockTable};
+use crate::commands::execute::{execute_statement, AccessLockTable};
+use crate::commands::meta::get_table_locks;
 use crate::commands::prepare;
 use crate::engine::structure::Record;
 use crate::errors::Error;
@@ -90,7 +91,7 @@ where
 
     println!("Running on {}:{}", config_address, config_port);
 
-    let exec_lock: AccessLockTable = Arc::new(RwLock::new(LockTable::new()));
+    let exec_lock: AccessLockTable = Arc::new(RwLock::new(get_table_locks("./db")?));
 
     for s in listener.incoming() {
         let stream = s.expect("Failed to get tcp stream");

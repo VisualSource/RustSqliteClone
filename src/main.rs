@@ -2,6 +2,7 @@ mod commands;
 mod controllers;
 mod engine;
 mod errors;
+#[macro_use]
 mod sql;
 
 use commands::args;

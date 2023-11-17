@@ -1,3 +1,5 @@
+use std::fmt::Display;
+
 use crate::sql::ColumnDef;
 
 use super::{
@@ -13,6 +15,37 @@ pub struct Schema {
     // (Column Name, Data Type, Nullable)
     pub columns: Vec<ColumnDef>,
     child_offset: Option<usize>,
+}
+
+impl Display for Schema {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        writeln!(f, "==== {} ====", self.name)?;
+        for (idx, col) in self.columns.iter().enumerate() {
+            writeln!(
+                f,
+                "{} {}{}{}{}{}",
+                col.name,
+                Value::print_type(col.data_type),
+                if idx == self.primary_key {
+                    " PRIMARY KEY"
+                } else {
+                    ""
+                },
+                if col.nullable { "?" } else { "" },
+                if col.unique && idx != self.primary_key {
+                    " UNIQUE"
+                } else {
+                    ""
+                },
+                if col.autoincrement {
+                    " AUTOINCREMENT"
+                } else {
+                    ""
+                }
+            )?;
+        }
+        write!(f, "")
+    }
 }
 
 impl Default for Schema {

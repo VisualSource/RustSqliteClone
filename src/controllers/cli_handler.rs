@@ -1,17 +1,36 @@
 use crate::{
     commands::{
         execute::{execute_statement, AccessLockTable, LockTable},
-        meta, prepare,
+        meta::{self, get_table_locks},
+        prepare,
     },
     errors::Error,
 };
+use log::{Level, Metadata, Record};
 use std::{
-    collections::HashMap,
     io::{stdin, stdout, Write},
     sync::{Arc, RwLock},
 };
 
-fn run_request(value: &String, mut lock_table: AccessLockTable) -> Result<(), Error> {
+struct CliLogger;
+
+impl log::Log for CliLogger {
+    fn enabled(&self, metadata: &Metadata) -> bool {
+        metadata.level() <= Level::Info
+    }
+
+    fn log(&self, record: &Record) {
+        if self.enabled(record.metadata()) {
+            println!("{}", record.args())
+        }
+    }
+
+    fn flush(&self) {
+        stdout().flush().expect("Failed to flush output!")
+    }
+}
+
+fn run_request(value: &String, lock_table: AccessLockTable) -> Result<(), Error> {
     let statement = prepare::prepare_statement(&value)?;
 
     let result = execute_statement(&statement, lock_table)?;
@@ -28,10 +47,16 @@ fn run_request(value: &String, mut lock_table: AccessLockTable) -> Result<(), Er
     Ok(())
 }
 
+static LOGGER: CliLogger = CliLogger;
+
 pub fn handle_cli() -> Result<(), Error> {
+    log::set_logger(&LOGGER)
+        .map(|()| log::set_max_level(log::LevelFilter::Info))
+        .map_err(|_| Error::Logger("Failed to set logger."))?;
+
     let mut input = String::new();
 
-    let lock_table: AccessLockTable = Arc::new(RwLock::new(LockTable::new()));
+    let lock_table: AccessLockTable = Arc::new(RwLock::new(get_table_locks("./db")?));
 
     loop {
         input.clear();

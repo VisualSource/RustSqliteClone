@@ -4,6 +4,6 @@ use thiserror::Error;
 pub enum Error {
     #[error("{0}")]
     UnknownChar(String),
-    #[error("Systax Error: {0}")]
+    #[error("{0}")]
     Systax(&'static str),
 }

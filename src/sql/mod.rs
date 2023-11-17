@@ -8,6 +8,19 @@ pub mod error;
 pub mod interperter;
 pub mod tokenizer;
 
+#[macro_export]
+macro_rules! sql {
+    ($query:tt) => {
+        $crate::sql::_query($query)
+    };
+}
+
+#[doc(hidden)]
+pub fn _query<T: Into<String>>(value: T) -> Vec<tokenizer::Token> {
+    let input = value.into();
+    tokenizer::tokenizer(&input).expect("Failed to parse query")
+}
+
 #[derive(Debug, Serialize, Deserialize, PartialEq, Clone, Eq)]
 pub enum Ordering {
     Asc,

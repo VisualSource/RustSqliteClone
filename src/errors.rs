@@ -18,4 +18,9 @@ pub enum Error {
     Unexpexted(&'static str),
     #[error("Serde Error: {0}")]
     Serde(#[from] serde_json::Error),
+    #[error("Failed to lock: {0}")]
+    Lock(String),
+
+    #[error("{0}")]
+    Logger(&'static str),
 }

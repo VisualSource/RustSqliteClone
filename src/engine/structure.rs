@@ -147,7 +147,7 @@ impl Record {
     ) -> Result<Self, Error> {
         let mut data = vec![];
 
-        let has_specified_columns = cols.len() == 0;
+        let has_specified_columns = cols.len() != 0;
 
         for idx in 0..schema.len() {
             let column = schema

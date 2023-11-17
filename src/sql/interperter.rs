@@ -66,15 +66,9 @@ pub fn interpect(buffer: Vec<Token>) -> Result<Statement, Error> {
 fn parse_create_table(tokens: &mut TokenIter<'_>) -> Result<Statement, Error> {
     let mut table_cols = vec![];
 
-    if !next_token!(tokens).is_keyword("table") {
-        return Err(Error::Systax(
-            "Invaild systax: Expected 'table'|'index'|'trigger'|'view'| after 'create'",
-        ));
-    }
-
     let table_name = match next_token!(tokens).get_identifer() {
         Some(ident) => ident,
-        None => return Err(Error::Systax("Invaild systax: Expected a table name")),
+        None => return Err(Error::Systax("Expected a table name")),
     };
 
     if !next_token!(tokens).is_token(&Token::LeftPren) {
@@ -82,6 +76,7 @@ fn parse_create_table(tokens: &mut TokenIter<'_>) -> Result<Statement, Error> {
     }
 
     let mut primary_key_idx: usize = 0;
+    let mut has_primary_key = false;
     let mut commas = 0;
     while let Some(value) = tokens.next() {
         match value {
@@ -112,8 +107,15 @@ fn parse_create_table(tokens: &mut TokenIter<'_>) -> Result<Statement, Error> {
                         }
                         match parse_column_constraint(tokens)? {
                             ColumnConstraint::PrimaryKey(row_ordering, autointer) => {
+                                if has_primary_key {
+                                    return Err(Error::Systax(
+                                        "Can not have more then one primary key.",
+                                    ));
+                                }
+
                                 nullable = false;
                                 unique = true;
+                                has_primary_key = true;
                                 primary_key_idx = commas;
                                 ordering = row_ordering;
                                 autoincrement = autointer;
@@ -402,7 +404,16 @@ pub fn parse_update(tokens: &mut TokenIter<'_>) -> Result<Statement, Error> {
 }
 
 pub fn parse_drop_table(tokens: &mut TokenIter<'_>) -> Result<Statement, Error> {
-    todo!()
+    match next_token!(tokens).get_identifer() {
+        Some(ident) => {
+            if !next_token!(tokens).is_token(&Token::SemiComma) {
+                return Err(Error::Systax("Expexted ';' after table name."));
+            }
+
+            Ok(Statement::DropTable { table: ident })
+        }
+        None => Err(Error::Systax("Expected table identifer.")),
+    }
 }
 
 #[cfg(test)]
@@ -414,6 +425,18 @@ mod tests {
     };
 
     use super::ColumnData;
+
+    #[test]
+    fn create_table_with_primary_key() {
+        let query = crate::sql!("CREATE TABLE test (id uint PRIMARY KEY, name string);");
+
+        println!("{:#?}", query);
+
+        match interpect(query) {
+            Ok(value) => println!("{:#?}", value),
+            Err(e) => panic!("{}", e),
+        }
+    }
 
     #[test]
     fn test_column_constarint_primary_key() {
