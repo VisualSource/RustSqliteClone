@@ -1,10 +1,10 @@
-use crate::commands::execute::execute_statement;
+use crate::commands::execute::{execute_statement, AccessLockTable, LockTable};
 use crate::commands::prepare;
 use crate::engine::structure::Record;
 use crate::errors::Error;
 use std::io::{Read, Write};
 use std::net::{TcpListener, TcpStream};
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, RwLock};
 
 fn create_response(value: String, status: &'static str, content_type: &'static str) -> String {
     format!(
@@ -16,10 +16,10 @@ fn create_response(value: String, status: &'static str, content_type: &'static s
     )
 }
 
-fn handle_request(value: &String, lock: Arc<Mutex<i32>>) -> Result<Option<String>, Error> {
+fn handle_request(value: &String, lock_table: AccessLockTable) -> Result<Option<String>, Error> {
     let statement = prepare::prepare_statement(&value)?;
 
-    let result = { execute_statement(&statement)? };
+    let result = execute_statement(&statement, lock_table)?;
 
     match result {
         Some(data) => {
@@ -30,7 +30,7 @@ fn handle_request(value: &String, lock: Arc<Mutex<i32>>) -> Result<Option<String
     }
 }
 
-fn handle_stream(mut stream: TcpStream, lock: Arc<Mutex<i32>>) -> Result<(), Error> {
+fn handle_stream(mut stream: TcpStream, table_lock: AccessLockTable) -> Result<(), Error> {
     let mut buffer = [0; 1024];
     stream.read(&mut buffer)?;
 
@@ -61,7 +61,7 @@ fn handle_stream(mut stream: TcpStream, lock: Arc<Mutex<i32>>) -> Result<(), Err
 
     let request_body = body.to_string();
 
-    let res = match handle_request(&request_body, lock) {
+    let res = match handle_request(&request_body, table_lock) {
         Ok(result) => match result {
             Some(v) => create_response(v, "200", "application/json"),
             None => create_response("[]".to_string(), "200", "application/json"),
@@ -90,7 +90,7 @@ where
 
     println!("Running on {}:{}", config_address, config_port);
 
-    let exec_lock = Arc::new(Mutex::new(0));
+    let exec_lock: AccessLockTable = Arc::new(RwLock::new(LockTable::new()));
 
     for s in listener.incoming() {
         let stream = s.expect("Failed to get tcp stream");

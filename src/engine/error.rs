@@ -26,4 +26,6 @@ pub enum Error {
 
     #[error("Parse Int Error: {0}")]
     ParseInt(#[from] ParseIntError),
+    #[error("Failed to lock")]
+    Lock,
 }

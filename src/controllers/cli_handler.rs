@@ -1,13 +1,20 @@
 use crate::{
-    commands::{execute, meta, prepare},
+    commands::{
+        execute::{execute_statement, AccessLockTable, LockTable},
+        meta, prepare,
+    },
     errors::Error,
 };
-use std::io::{stdin, stdout, Write};
+use std::{
+    collections::HashMap,
+    io::{stdin, stdout, Write},
+    sync::{Arc, RwLock},
+};
 
-fn run_request(value: &String) -> Result<(), Error> {
+fn run_request(value: &String, mut lock_table: AccessLockTable) -> Result<(), Error> {
     let statement = prepare::prepare_statement(&value)?;
 
-    let result = execute::execute_statement(&statement)?;
+    let result = execute_statement(&statement, lock_table)?;
 
     if let Some(v) = result {
         for x in v {
@@ -24,6 +31,8 @@ fn run_request(value: &String) -> Result<(), Error> {
 pub fn handle_cli() -> Result<(), Error> {
     let mut input = String::new();
 
+    let lock_table: AccessLockTable = Arc::new(RwLock::new(LockTable::new()));
+
     loop {
         input.clear();
         print!("> ");
@@ -38,7 +47,9 @@ pub fn handle_cli() -> Result<(), Error> {
             continue;
         }
 
-        if let Err(e) = run_request(&input) {
+        let lock = lock_table.clone();
+
+        if let Err(e) = run_request(&input, lock) {
             eprintln!("{}", e);
         }
     }

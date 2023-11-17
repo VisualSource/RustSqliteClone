@@ -18,6 +18,7 @@ pub struct BTree {
 pub struct BTreeBuilder {
     path: PathBuf,
     b: usize,
+    offset: usize,
 }
 
 impl BTree {
@@ -478,6 +479,7 @@ impl BTreeBuilder {
         Self {
             path: PathBuf::new(),
             b: 0,
+            offset: 0,
         }
     }
     pub fn path(mut self, path: PathBuf) -> Self {
@@ -486,6 +488,11 @@ impl BTreeBuilder {
     }
     pub fn b_parameter(mut self, b: usize) -> Self {
         self.b = b;
+        self
+    }
+
+    pub fn cursor_offset(mut self, offset: usize) -> Self {
+        self.offset = offset;
         self
     }
 
@@ -500,6 +507,12 @@ impl BTreeBuilder {
             ));
         }
 
+        let mut pager = Pager::new(self.path.clone())?;
+
+        if self.offset != 0 {
+            pager.set_cursor(256)
+        }
+
         //let mut pager = ?;
 
         let parent_directory = self
@@ -508,7 +521,7 @@ impl BTreeBuilder {
             .ok_or_else(|| Error::UnexpectedWithReason("Failed to get parent of given path."))?;
 
         Ok(BTree {
-            pager: Pager::new(self.path.clone())?,
+            pager,
             b: self.b,
             wal: Wal::new(parent_directory.to_path_buf())?,
         })
@@ -524,13 +537,12 @@ mod test {
         let mut tree = match BTreeBuilder::new()
             .b_parameter(10)
             .path(PathBuf::from("./db/test.bin"))
+            .cursor_offset(256)
             .build()
         {
             Ok(value) => value,
             Err(e) => panic!("{}", e),
         };
-
-        tree.pager.set_cursor(256);
 
         tree
     }
