@@ -109,7 +109,11 @@ pub fn execute_statement(
 
             Err(Error::Lock("Failed to lock.".into()))
         }
-        Statement::Select { table, columns } => {
+        Statement::Select {
+            table,
+            columns,
+            target,
+        } => {
             let table_lock = lock_table.read().map_err(|e| Error::Lock(e.to_string()))?;
 
             let (lock, table_path) = table_lock.get_lock(table)?;

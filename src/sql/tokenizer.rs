@@ -15,6 +15,12 @@ pub enum Token {
     LeftPren,
     Period,
     Star,
+    Equal,
+    GreaterThan,
+    LessThan,
+    GreaterThanOrEqual,
+    LessThanOrEqual,
+    NotEqual,
     String(String),
     Number(String),
     Ident(String),
@@ -50,6 +56,12 @@ impl From<&str> for Token {
             ";" => Token::SemiComma,
             "," => Token::Comma,
             "." => Token::Period,
+            "=" => Self::Equal,
+            ">" => Self::GreaterThan,
+            "<" => Self::LessThan,
+            ">=" => Self::GreaterThanOrEqual,
+            "<=" => Self::LessThanOrEqual,
+            "!=" => Self::NotEqual,
             _ => Token::Ident(value.into()),
         }
     }
@@ -57,15 +69,7 @@ impl From<&str> for Token {
 
 impl From<String> for Token {
     fn from(value: String) -> Self {
-        match value.as_str() {
-            "(" => Token::LeftPren,
-            ")" => Token::RightPren,
-            "*" => Token::Star,
-            ";" => Token::SemiComma,
-            "," => Token::Comma,
-            "." => Token::Period,
-            _ => Token::Ident(value),
-        }
+        Token::from(value.as_str())
     }
 }
 
@@ -77,6 +81,9 @@ impl From<char> for Token {
             ',' => Self::Comma,
             '*' => Self::Star,
             ';' => Self::SemiComma,
+            '=' => Self::Equal,
+            '>' => Self::GreaterThan,
+            '<' => Self::LessThan,
             _ => Self::EOL,
         }
     }
@@ -138,8 +145,25 @@ pub fn tokenizer(buffer: &String) -> Result<Vec<Token>, Error> {
 
                 tokens.push(Token::String(value))
             }
-            '(' | ')' | '.' | '*' | ',' | ';' => tokens.push(token!(char)),
-
+            '>' => match input.peek().expect("Failed to peek") {
+                '=' => {
+                    input.next();
+                    tokens.push(token!(">="))
+                }
+                _ => tokens.push(token!(char)),
+            },
+            '<' => match input.peek().expect("Failed to peek") {
+                '=' => {
+                    input.next();
+                    tokens.push(token!(">="))
+                }
+                _ => tokens.push(token!(char)),
+            },
+            '!' => match input.next().expect("Failed to get next token") {
+                '=' => tokens.push(token!("!=")),
+                e => return Err(Error::UnknownChar(format!("Was expecting '=' not '{}'", e))),
+            },
+            '(' | ')' | '.' | '*' | ',' | ';' | '=' => tokens.push(token!(char)),
             _ => {
                 return Err(Error::UnknownChar(format!(
                     ": Unknown char: {}",

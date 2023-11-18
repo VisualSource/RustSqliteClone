@@ -33,6 +33,21 @@ impl Default for Ordering {
     }
 }
 
+#[derive(Debug, PartialEq)]
+pub enum Condition {
+    E(String, String),
+    GT(String, String),
+    LT(String, String),
+    GTE(String, String),
+    LTE(String, String),
+    NE(String, String),
+    NOT,
+    BETWEEN(String, String, String),
+    LIKE(String, String),
+    AND,
+    OR,
+}
+
 #[derive(Debug, Serialize, Deserialize, PartialEq, Clone, Eq)]
 pub struct ColumnDef {
     pub name: String,
@@ -81,6 +96,7 @@ pub enum Statement {
     Select {
         table: String,
         columns: Vec<String>,
+        target: Option<Vec<Condition>>,
     },
     Create {
         primary_key: usize,
@@ -89,13 +105,13 @@ pub enum Statement {
     },
     Delete {
         table: String,
-        target: String,
+        target: Vec<Condition>,
     },
     Update {
         table: String,
         columns: Vec<String>,
         data: Vec<ColumnData>,
-        target: String,
+        target: Vec<Condition>,
     },
     DropTable {
         table: String,

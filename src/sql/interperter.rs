@@ -1,6 +1,6 @@
 use super::error::Error;
 use super::tokenizer::Token;
-use super::{ColumnDef, Ordering};
+use super::{ColumnDef, Condition, Ordering};
 use crate::engine::structure::Value;
 use crate::sql::Statement;
 
@@ -305,6 +305,13 @@ fn parse_select(tokens: &mut TokenIter<'_>) -> Result<Statement, Error> {
         None => return Err(Error::Systax("Invaild token")),
     };
 
+    let target = if let Some(_) = tokens.next_if(|x| x.is_keyword("where")) {
+        let target = parse_expr(tokens)?;
+        Some(target)
+    } else {
+        None
+    };
+
     if !next_token!(tokens).is_token(&Token::SemiComma) {
         return Err(Error::Systax("Expected ';'"));
     }
@@ -312,6 +319,7 @@ fn parse_select(tokens: &mut TokenIter<'_>) -> Result<Statement, Error> {
     Ok(Statement::Select {
         table: table_name,
         columns: cols,
+        target,
     })
 }
 
@@ -395,8 +403,86 @@ fn parse_column_constraint(tokens: &mut TokenIter<'_>) -> Result<ColumnConstrain
     }
 }
 
+fn parse_expr(tokens: &mut TokenIter<'_>) -> Result<Vec<Condition>, Error> {
+    let mut out = vec![];
+
+    // Format
+    // COLUMN OP VALUE
+    //  OR
+    // COLUMN BETWEEN VALUE AND VALUE
+
+    while let Some(token) =
+        tokens.next_if(|x| !(x.is_token(&Token::EOL) || x.is_token(&Token::SemiComma)))
+    {
+        let ident = token
+            .get_identifer()
+            .ok_or_else(|| Error::Systax("Failed to get identifier."))?;
+
+        match ident.as_str() {
+            "AND" | "and" => out.push(Condition::AND),
+            "OR" | "or" => out.push(Condition::OR),
+            "NOT" | "not" => out.push(Condition::NOT),
+            _ => {
+                let opt = next_token!(tokens);
+                let value = match next_token!(tokens) {
+                    Token::String(a) => a,
+                    Token::Number(a) => a,
+                    _ => return Err(Error::Systax("Invalid value.")),
+                };
+
+                match opt {
+                    Token::Equal => out.push(Condition::E(ident.to_string(), value.to_owned())),
+                    Token::GreaterThan => {
+                        out.push(Condition::GT(ident.to_string(), value.to_owned()))
+                    }
+                    Token::GreaterThanOrEqual => {
+                        out.push(Condition::GTE(ident.to_string(), value.to_owned()))
+                    }
+
+                    Token::LessThan => out.push(Condition::LT(ident.to_string(), value.to_owned())),
+                    Token::LessThanOrEqual => {
+                        out.push(Condition::LTE(ident.to_string(), value.to_owned()))
+                    }
+
+                    Token::NotEqual => out.push(Condition::NE(ident.to_string(), value.to_owned())),
+                    _ => return Err(Error::Systax("Expexted token '='|'<'|'>'|'<='|'>='|'!='")),
+                }
+            }
+        }
+    }
+
+    if let Some(v) = out.first() {
+        match v {
+            Condition::AND | Condition::OR => {
+                return Err(Error::Systax("'AND' or 'OR' can not start a statement."))
+            }
+            _ => {}
+        }
+    }
+
+    Ok(out)
+}
+
 pub fn parse_delete(tokens: &mut TokenIter<'_>) -> Result<Statement, Error> {
-    todo!()
+    if !next_token!(tokens).is_keyword("from") {
+        return Err(Error::Systax("Expected keyword 'from' after 'delete'."));
+    }
+
+    let table_name = match next_token!(tokens).get_identifer() {
+        Some(i) => i,
+        None => return Err(Error::Systax("Invaild token")),
+    };
+
+    if !next_token!(tokens).is_keyword("where") {
+        return Err(Error::Systax("Expected keyword 'where'"));
+    }
+
+    let target = parse_expr(tokens)?;
+
+    Ok(Statement::Delete {
+        table: table_name,
+        target: target,
+    })
 }
 
 pub fn parse_update(tokens: &mut TokenIter<'_>) -> Result<Statement, Error> {
@@ -425,6 +511,18 @@ mod tests {
     };
 
     use super::ColumnData;
+
+    #[test]
+    fn parse_expr_value() {
+        let query = crate::sql!("NOT column = 1 AND id > 2;");
+
+        let mut iter = query.iter().peekable();
+
+        match parse_expr(&mut iter) {
+            Ok(e) => println!("{:#?}", e),
+            Err(e) => eprintln!("{:#?}", e),
+        }
+    }
 
     #[test]
     fn create_table_with_primary_key() {
