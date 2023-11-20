@@ -125,7 +125,7 @@ pub fn execute_statement(
                 .build()?;
 
             if let Ok(_) = lock.read() {
-                let results = db.select(columns, None)?;
+                let results = db.select(columns, target, None)?;
                 return Ok(Some(results));
             }
 

@@ -56,6 +56,7 @@ impl BTree {
     pub fn select(
         &mut self,
         keep: &Vec<String>,
+        target: &Option<Vec<Condition>>,
         _limit: Option<usize>,
     ) -> Result<Vec<Record>, Error> {
         let root_offset = self.wal.get_root()?;
@@ -63,6 +64,12 @@ impl BTree {
         let root = Node::try_from(root_page)?;
 
         let schema = self.get_table()?;
+
+        let selection = if let Some(cond) = target {
+            Some(self.parse_conditions(&cond)?)
+        } else {
+            None
+        };
 
         let indexs = if keep.len() == 0 {
             None
@@ -72,7 +79,7 @@ impl BTree {
 
         let mut results = vec![];
 
-        self.select_node(root, &mut results, &indexs)?;
+        self.select_node(root, &mut results, &indexs, &selection)?;
 
         Ok(results)
     }
@@ -82,6 +89,7 @@ impl BTree {
         node: Node,
         results: &mut Vec<Record>,
         indexs: &Option<Vec<usize>>,
+        selection: &Option<Vec<ConditionValue>>,
     ) -> Result<(), Error> {
         match node.node_type {
             NodeType::Schema(_) => Err(Error::Unexpected),
@@ -89,7 +97,7 @@ impl BTree {
                 for offset in offsets {
                     let page = self.pager.get_page(&offset)?;
                     let child_node = Node::try_from(page)?;
-                    self.select_node(child_node, results, indexs)?;
+                    self.select_node(child_node, results, indexs, selection)?;
                 }
 
                 Ok(())
@@ -97,10 +105,18 @@ impl BTree {
             NodeType::Leaf(rows) => {
                 if let Some(idex) = &indexs {
                     for row in rows {
+                        if !row.match_condition(selection)? {
+                            continue;
+                        }
                         results.push(row.select_only(&idex))
                     }
                 } else {
-                    results.extend(rows)
+                    for row in rows {
+                        if !row.match_condition(selection)? {
+                            continue;
+                        }
+                        results.push(row);
+                    }
                 }
 
                 Ok(())

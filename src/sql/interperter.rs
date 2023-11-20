@@ -479,6 +479,10 @@ pub fn parse_delete(tokens: &mut TokenIter<'_>) -> Result<Statement, Error> {
 
     let target = parse_expr(tokens)?;
 
+    if !next_token!(tokens).is_token(&Token::SemiComma) {
+        return Err(Error::Systax("Expected ';'"));
+    }
+
     Ok(Statement::Delete {
         table: table_name,
         target: target,
@@ -532,6 +536,10 @@ pub fn parse_update(tokens: &mut TokenIter<'_>) -> Result<Statement, Error> {
     } else {
         None
     };
+
+    if !next_token!(tokens).is_token(&Token::SemiComma) {
+        return Err(Error::Systax("Expected ';'"));
+    }
 
     Ok(Statement::Update {
         table: table_name,
