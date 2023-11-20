@@ -476,8 +476,6 @@ impl BTree {
     }
 
     pub fn delete(&mut self, condition: Option<&Vec<Condition>>) -> Result<(), Error> {
-        let schema = self.get_table()?;
-
         let values = if let Some(cond) = condition {
             Some(self.parse_conditions(cond)?)
         } else {

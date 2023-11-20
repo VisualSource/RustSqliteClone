@@ -1,6 +1,6 @@
 use std::fmt::Display;
 
-use crate::sql::{interperter::ColumnData, Condition};
+use crate::sql::interperter::ColumnData;
 
 use super::{error::Error, node_type::Schema, page_layout::PTR_SIZE};
 use serde::{Deserialize, Serialize, Serializer};

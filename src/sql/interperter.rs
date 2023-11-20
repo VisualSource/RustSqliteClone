@@ -431,6 +431,27 @@ fn parse_expr(tokens: &mut TokenIter<'_>) -> Result<Vec<Condition>, Error> {
                 };
 
                 match opt {
+                    Token::Ident(ident) => match ident.to_lowercase().as_str() {
+                        "between" => {
+                            if !next_token!(tokens).is_keyword("and") {
+                                return Err(Error::Systax("Expected keyword 'where'"));
+                            }
+
+                            let range_end = match next_token!(tokens) {
+                                Token::String(a) => a,
+                                Token::Number(a) => a,
+                                _ => return Err(Error::Systax("Invalid value.")),
+                            };
+
+                            out.push(Condition::BETWEEN(
+                                ident.to_string(),
+                                value.to_owned(),
+                                range_end.to_owned(),
+                            ))
+                        }
+                        "like" => out.push(Condition::LIKE(ident.to_string(), value.to_owned())),
+                        _ => return Err(Error::Systax("Invalid value.")),
+                    },
                     Token::Equal => out.push(Condition::E(ident.to_string(), value.to_owned())),
                     Token::GreaterThan => {
                         out.push(Condition::GT(ident.to_string(), value.to_owned()))

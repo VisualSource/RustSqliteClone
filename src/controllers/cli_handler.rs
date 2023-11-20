@@ -1,6 +1,6 @@
 use crate::{
     commands::{
-        execute::{execute_statement, AccessLockTable, LockTable},
+        execute::{execute_statement, AccessLockTable},
         meta::{self, get_table_locks},
         prepare,
     },
