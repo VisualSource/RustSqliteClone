@@ -1,6 +1,6 @@
 use std::fmt::Display;
 
-use crate::sql::interperter::ColumnData;
+use crate::sql::{interperter::ColumnData, Condition};
 
 use super::{error::Error, node_type::Schema, page_layout::PTR_SIZE};
 use serde::{Deserialize, Serialize, Serializer};
@@ -136,6 +136,29 @@ impl From<&Value> for u8 {
     }
 }
 
+#[derive(Debug, PartialEq)]
+pub enum Operation {
+    Equal,
+    GT,
+    LT,
+    GTE,
+    LTE,
+    BETWEEN,
+    LIKE,
+}
+
+#[derive(Debug, PartialEq)]
+pub enum ConditionValue {
+    AND,
+    OR,
+    Value {
+        invert: bool,
+        idx: usize,
+        opt: Operation,
+        values: [super::structure::Value; 2],
+    },
+}
+
 #[derive(Serialize, Deserialize, PartialEq, Debug, Clone, Eq, PartialOrd, Ord)]
 pub struct Record(pub Vec<Value>);
 
@@ -228,8 +251,122 @@ impl Record {
         Record(data)
     }
 
-    pub fn as_json(&self) -> Result<String, Error> {
-        serde_json::to_string(self).map_err(|x| Error::Serde(x))
+    pub fn match_condition(&self, condition: &Option<Vec<ConditionValue>>) -> Result<bool, Error> {
+        match &condition {
+            Some(rules) => {
+                let mut rules_iter = rules.iter().peekable();
+
+                let mut result = false;
+
+                while let Some(rule) = rules_iter.next() {
+                    match rule {
+                        ConditionValue::Value {
+                            invert,
+                            idx,
+                            opt,
+                            values,
+                        } => match opt {
+                            Operation::Equal => {
+                                let column_value = self.0.get(idx.to_owned()).ok_or_else(|| {
+                                    Error::UnexpectedWithReason("Failed to get column value.")
+                                })?;
+
+                                result = column_value == &values[0];
+
+                                if *invert {
+                                    result = !result;
+                                }
+                            }
+                            Operation::GT => {
+                                let column_value = self.0.get(idx.to_owned()).ok_or_else(|| {
+                                    Error::UnexpectedWithReason("Failed to get column value.")
+                                })?;
+
+                                result = column_value > &values[0];
+
+                                if *invert {
+                                    result = !result;
+                                }
+                            }
+                            Operation::LT => {
+                                let column_value = self.0.get(idx.to_owned()).ok_or_else(|| {
+                                    Error::UnexpectedWithReason("Failed to get column value.")
+                                })?;
+
+                                result = column_value < &values[0];
+
+                                if *invert {
+                                    result = !result;
+                                }
+                            }
+                            Operation::GTE => {
+                                let column_value = self.0.get(idx.to_owned()).ok_or_else(|| {
+                                    Error::UnexpectedWithReason("Failed to get column value.")
+                                })?;
+
+                                result = column_value >= &values[0];
+
+                                if *invert {
+                                    result = !result;
+                                }
+                            }
+                            Operation::LTE => {
+                                let column_value = self.0.get(idx.to_owned()).ok_or_else(|| {
+                                    Error::UnexpectedWithReason("Failed to get column value.")
+                                })?;
+
+                                result = column_value <= &values[0];
+
+                                if *invert {
+                                    result = !result;
+                                }
+                            }
+                            Operation::BETWEEN => {
+                                let column_value = self.0.get(idx.to_owned()).ok_or_else(|| {
+                                    Error::UnexpectedWithReason("Failed to get column value.")
+                                })?;
+
+                                result = column_value > &values[0] && column_value < &values[1];
+
+                                if *invert {
+                                    result = !result;
+                                }
+                            }
+                            Operation::LIKE => todo!(),
+                        },
+                        _ => {
+                            return Err(Error::UnexpectedWithReason(
+                                "Did not expected 'AND', 'OR' as starting rule.",
+                            ))
+                        }
+                    }
+
+                    match rules_iter
+                        .next_if(|x| x == &&ConditionValue::AND || x == &&ConditionValue::OR)
+                    {
+                        Some(opt) => match opt {
+                            ConditionValue::AND => {
+                                if !result {
+                                    break;
+                                }
+                            }
+                            ConditionValue::OR => {
+                                if result {
+                                    break;
+                                }
+                            }
+                            _ => {
+                                return Err(Error::UnexpectedWithReason("Did not expect a value."))
+                            }
+                        },
+                        None => break,
+                    }
+                }
+
+                Ok(result)
+            }
+            None => Ok(true),
+        }
     }
 
     pub fn len(&self) -> usize {
@@ -246,8 +383,37 @@ impl Record {
 
 #[cfg(test)]
 mod tests {
+    use super::ConditionValue;
     use super::Record;
     use super::Value;
+
+    #[test]
+    fn test_match_condition() {
+        let record = Record(vec![
+            Value::UInt(32),
+            Value::String("Hello".into()),
+            Value::Null,
+            Value::U64(30),
+        ]);
+
+        let condition = vec![
+            ConditionValue::Value {
+                invert: false,
+                idx: 0,
+                opt: super::Operation::Equal,
+                values: [Value::UInt(32), Value::Null],
+            },
+            ConditionValue::AND,
+            ConditionValue::Value {
+                invert: false,
+                idx: 1,
+                opt: super::Operation::Equal,
+                values: [Value::String("Hello".into()), Value::Null],
+            },
+        ];
+
+        assert!(record.match_condition(&Some(condition)).unwrap_or(false));
+    }
 
     #[test]
     fn test_record() {

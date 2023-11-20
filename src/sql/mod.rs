@@ -109,9 +109,8 @@ pub enum Statement {
     },
     Update {
         table: String,
-        columns: Vec<String>,
-        data: Vec<ColumnData>,
-        target: Vec<Condition>,
+        columns: Vec<(String, ColumnData)>,
+        target: Option<Vec<Condition>>,
     },
     DropTable {
         table: String,

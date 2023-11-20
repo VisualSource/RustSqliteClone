@@ -160,13 +160,44 @@ pub fn execute_statement(
 
             Err(Error::Unexpexted("Failed to create table."))
         }
-        Statement::Delete { table, target } => todo!(),
+        Statement::Delete { table, target } => {
+            let table_lock = lock_table.read().map_err(|e| Error::Lock(e.to_string()))?;
+
+            let (lock, table_path) = table_lock.get_lock(table)?;
+
+            let mut db = BTreeBuilder::new()
+                .b_parameter(10)
+                .cursor_offset(256)
+                .path(PathBuf::from(table_path))
+                .build()?;
+
+            if let Ok(_) = lock.write() {
+                db.delete(Some(target))?;
+            }
+
+            Ok(None)
+        }
         Statement::Update {
             table,
             columns,
-            data,
             target,
-        } => todo!(),
+        } => {
+            let table_lock = lock_table.read().map_err(|e| Error::Lock(e.to_string()))?;
+
+            let (lock, table_path) = table_lock.get_lock(table)?;
+
+            let mut db = BTreeBuilder::new()
+                .b_parameter(10)
+                .cursor_offset(256)
+                .path(PathBuf::from(table_path))
+                .build()?;
+
+            if let Ok(_) = lock.write() {
+                db.update(columns, target)?;
+            }
+
+            Ok(None)
+        }
         Statement::DropTable { table } => {
             if let Ok(mut lock) = lock_table.write() {
                 lock.remove_lock(table.to_owned())?;

@@ -486,7 +486,58 @@ pub fn parse_delete(tokens: &mut TokenIter<'_>) -> Result<Statement, Error> {
 }
 
 pub fn parse_update(tokens: &mut TokenIter<'_>) -> Result<Statement, Error> {
-    todo!()
+    let table_name = match next_token!(tokens).get_identifer() {
+        Some(i) => i,
+        None => return Err(Error::Systax("Invaild token")),
+    };
+
+    if !next_token!(tokens).is_keyword("set") {
+        return Err(Error::Systax("Expected keyword 'where'"));
+    }
+
+    let mut columns = vec![];
+    // column-name = expr
+    while let Some(token) = tokens.next_if(|x| {
+        !(x.is_keyword("where") || x.is_keyword("from") || x.is_token(&Token::SemiComma))
+    }) {
+        let column_name = match token.get_identifer() {
+            Some(i) => i,
+            None => return Err(Error::Systax("Invaild token")),
+        };
+
+        if !next_token!(tokens).is_token(&Token::Equal) {
+            return Err(Error::Systax("Expected keyword '=' after column name"));
+        }
+
+        let value = match next_token!(tokens) {
+            Token::Number(v) => ColumnData::Value(v.to_owned()),
+            Token::String(v) => ColumnData::Value(v.to_owned()),
+            Token::Ident(v) => {
+                if v != "null" {
+                    return Err(Error::Systax("Invaild data"));
+                }
+                ColumnData::Null
+            }
+            _ => return Err(Error::Systax("Invaild data")),
+        };
+
+        tokens.next_if(|x| x.is_token(&Token::Comma));
+
+        columns.push((column_name, value))
+    }
+
+    let target = if let Some(_) = tokens.next_if(|x| x.is_keyword("where")) {
+        let rules = parse_expr(tokens)?;
+        Some(rules)
+    } else {
+        None
+    };
+
+    Ok(Statement::Update {
+        table: table_name,
+        columns,
+        target,
+    })
 }
 
 pub fn parse_drop_table(tokens: &mut TokenIter<'_>) -> Result<Statement, Error> {
@@ -513,6 +564,15 @@ mod tests {
     use super::ColumnData;
 
     #[test]
+    fn parse_update_statement() {
+        let query = crate::sql!("UPDATE test SET name=\"WORLD\";");
+        match interpect(query) {
+            Ok(value) => println!("{:#?}", value),
+            Err(e) => panic!("{}", e),
+        }
+    }
+
+    #[test]
     fn parse_expr_value() {
         let query = crate::sql!("NOT column = 1 AND id > 2;");
 
@@ -521,6 +581,16 @@ mod tests {
         match parse_expr(&mut iter) {
             Ok(e) => println!("{:#?}", e),
             Err(e) => eprintln!("{:#?}", e),
+        }
+    }
+
+    #[test]
+    fn where_expr_test() {
+        let delete_query = crate::sql!("DELETE FROM test WHERE id=1;");
+
+        match interpect(delete_query) {
+            Ok(value) => println!("{:#?}", value),
+            Err(e) => panic!("{}", e),
         }
     }
 

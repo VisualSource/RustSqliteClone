@@ -116,6 +116,21 @@ impl Schema {
         Ok(())
     }
 
+    pub fn parse_value_by_col(
+        &self,
+        column: &String,
+        value: &String,
+    ) -> Result<(Value, usize), Error> {
+        let id = self.get_column_idx_by_name(column).ok_or_else(|| {
+            Error::UnexpectedWithReason("Schema does not have column with given name.")
+        })?;
+        let column_data = self
+            .columns
+            .get(id)
+            .ok_or_else(|| Error::UnexpectedWithReason("Failed to get column data"))?;
+        Ok((Value::parse(value, column_data.data_type)?, id))
+    }
+
     pub fn get_column_idx_by_name(&self, column: &String) -> Option<usize> {
         self.columns.iter().position(|x| &x.name == column)
     }
